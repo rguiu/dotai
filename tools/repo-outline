@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# repo-outline — print a compact structural index of a codebase.
+# Generates a directory tree + function/class signatures per file.
+# Much smaller than reading every file individually.
+set -euo pipefail
+
+REPO="${1:-.}"
+cd "$REPO"
+
+MAX_DEPTH="${MAX_DEPTH:-3}"
+MAX_LINES="${MAX_LINES:-200}"
+
+# ── Directory tree ───────────────────────────────────────────────
+echo "=== Directory tree (depth=$MAX_DEPTH) ==="
+echo
+
+if command -v tree &>/dev/null; then
+  tree -L "$MAX_DEPTH" --dirsfirst -a -I '.git|node_modules|__pycache__|.venv|vendor|dist|build|target|.next|coverage|.mypy_cache|.ruff_cache|*.pyc|*.pyo|.DS_Store' | head -n "$MAX_LINES"
+else
+  find . -maxdepth "$MAX_DEPTH" \
+    -not -path '*/\.git/*' \
+    -not -path '*/node_modules/*' \
+    -not -path '*/__pycache__/*' \
+    -not -path '*/.venv/*' \
+    -not -path '*/vendor/*' \
+    -not -path '*/dist/*' \
+    -not -path '*/build/*' \
+    -not -path '*/target/*' \
+    -not -path '*/.next/*' \
+    -not -path '*/coverage/*' \
+    -not -path '*/.mypy_cache/*' \
+    -not -path '*/.ruff_cache/*' \
+    -not -name '*.pyc' \
+    -not -name '*.pyo' \
+    -not -name '.DS_Store' \
+    -type f -o -type d | sort | head -n "$MAX_LINES"
+fi
+
+# ── Symbol index (function/class signatures per file) ────────────
+echo
+echo "=== Symbol index ==="
+echo
+
+scan_py() {
+  grep -nE '^\s*(def |class |async def )' "$1" 2>/dev/null | \
+    sed -E 's/^([0-9]+):\s*(def |class |async def )/\tL\1  /' | \
+    sed 's/(.*$//'
+}
+
+scan_js_ts() {
+  grep -nE '^\s*(export )?(async )?(function |class |const [A-Z]|interface |type [A-Z]|enum )' "$1" 2>/dev/null | \
+    sed -E 's/^([0-9]+):\s*/\tL\1  /' | \
+    sed 's/[{};].*$//'
+}
+
+scan_go() {
+  grep -nE '^\s*(func |type )' "$1" 2>/dev/null | \
+    sed -E 's/^([0-9]+):\s*/\tL\1  /' | \
+    sed 's/[{}].*$//'
+}
+
+scan_rs() {
+  grep -nE '^\s*(pub )?(fn |struct |enum |trait |impl |mod )' "$1" 2>/dev/null | \
+    sed -E 's/^([0-9]+):\s*/\tL\1  /' | \
+    sed 's/[{}].*$//'
+}
+
+scan_sh() {
+  grep -nE '^\s*(function |[a-zA-Z_][a-zA-Z0-9_-]*\(\))' "$1" 2>/dev/null | \
+    sed -E 's/^([0-9]+):\s*/\tL\1  /'
+}
+
+scanned=0
+while IFS= read -r -d '' file; do
+  ext="${file##*.}"
+  output=""
+
+  case "$ext" in
+    py)       output="$(scan_py "$file")" ;;
+    js|ts|jsx|tsx|mjs|cjs) output="$(scan_js_ts "$file")" ;;
+    go)       output="$(scan_go "$file")" ;;
+    rs)       output="$(scan_rs "$file")" ;;
+    sh|bash|zsh) output="$(scan_sh "$file")" ;;
+    *)        continue ;;
+  esac
+
+  if [ -n "$output" ]; then
+    echo "$file"
+    echo "$output"
+    scanned=$((scanned + 1))
+  fi
+done < <(
+  find . \
+    -not -path '*/\.git/*' \
+    -not -path '*/node_modules/*' \
+    -not -path '*/__pycache__/*' \
+    -not -path '*/.venv/*' \
+    -not -path '*/vendor/*' \
+    -not -path '*/dist/*' \
+    -not -path '*/build/*' \
+    -not -path '*/target/*' \
+    -not -path '*/.next/*' \
+    -not -path '*/coverage/*' \
+    -not -path '*/test/*' \
+    -not -path '*/tests/*' \
+    -not -path '*/spec/*' \
+    -not -path '*/__tests__/*' \
+    -type f \
+    \( -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.jsx' -o -name '*.tsx' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.go' -o -name '*.rs' -o -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \) \
+    -print0
+)
+
+echo
+echo "($scanned files with symbols)"

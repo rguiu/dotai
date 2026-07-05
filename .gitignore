@@ -1,0 +1,16 @@
+# Secrets — never commit
+.env
+.envrc
+.envrc.dotai
+*.pem
+*.key
+*_secret*
+secrets/
+
+# Session notes (not for git)
+.session/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.pre-init.*

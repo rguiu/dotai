@@ -1,0 +1,18 @@
+{
+  "name": "pragmatic",
+  "description": "Balanced — quality gates, lint+test, no GRILL ME, simple git workflow",
+  "includes": {
+    "rules": ["python", "typescript"],
+    "skills": ["pr-review", "debug", "readme-gen"],
+    "agents": ["reviewer"],
+    "core_mcp": ["filesystem", "github", "memory"],
+    "optional_mcp": ["brave-search", "sqlite", "postgres"]
+  },
+  "config": {
+    "opencode": {
+      "compaction": { "auto": true, "prune": false },
+      "permission": { "edit": "allow", "bash": "ask" }
+    }
+  },
+  "claude_md": "pragmatic"
+}

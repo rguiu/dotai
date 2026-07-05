@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "{env:OPENCODE_MODEL}",
+  "autoupdate": true,
+  "permission": {
+    "edit": "ask",
+    "bash": "ask",
+    "skill": {
+      "*": "allow"
+    }
+  },
+  "instructions": [
+    "rules/python.md", "rules/typescript.md", "rules/rust.md", "rules/go.md"
+  ],
+  "compaction": {"auto": true, "prune": true, "reserved": 10000}
+}

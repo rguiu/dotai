@@ -1,0 +1,16 @@
+{
+  "name": "google-maps",
+  "description": "Geocoding, directions, places search, and distance calculations",
+  "server": {
+    "command": "npx",
+    "args": ["-y", "@anthropic-ai/mcp-server-google-maps"],
+    "env": {
+      "GOOGLE_MAPS_API_KEY": "{env:GOOGLE_MAPS_API_KEY}"
+    }
+  },
+  "requires": {
+    "binaries": ["npx"],
+    "env_vars": ["GOOGLE_MAPS_API_KEY"]
+  },
+  "setup_notes": "Get an API key from Google Cloud Console with Maps JavaScript API and Geocoding API enabled."
+}

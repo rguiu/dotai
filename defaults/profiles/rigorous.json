@@ -1,0 +1,18 @@
+{
+  "name": "rigorous",
+  "description": "Full gates — GRILL ME protocol, quality gates, worktrees, 7 skills, 4 languages",
+  "includes": {
+    "rules": ["python", "rust", "typescript", "go"],
+    "skills": ["pr-review", "debug", "adr", "onboard", "handoff", "readme-gen", "doctor"],
+    "agents": ["reviewer", "planner", "test-writer"],
+    "core_mcp": ["filesystem", "github", "memory"],
+    "optional_mcp": ["gmail", "slack", "brave-search", "linear", "jira", "notion", "sqlite", "puppeteer", "google-maps", "postgres"]
+  },
+  "config": {
+    "opencode": {
+      "compaction": { "auto": true, "prune": true, "reserved": 10000 },
+      "permission": { "edit": "ask", "bash": "ask" }
+    }
+  },
+  "claude_md": "rigorous"
+}

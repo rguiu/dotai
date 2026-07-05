@@ -1,0 +1,253 @@
+#!/usr/bin/env bash
+# mcp-manage — conditionally add/remove MCP servers.
+# Reads server configs from mcp/available/, merges into claude_desktop_config.json.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AI_DIR="$(dirname "$SCRIPT_DIR")"
+AVAILABLE_DIR="$AI_DIR/mcp/available"
+CONFIG_FILE="$AI_DIR/mcp/claude_desktop_config.json"
+BACKUP_SUFFIX=".bak.$(date +%Y%m%d_%H%M%S)"
+
+GREEN=$'\033[0;32m'
+RED=$'\033[0;31m'
+YELLOW=$'\033[0;33m'
+CYAN=$'\033[0;36m'
+RESET=$'\033[0m'
+DIM=$'\033[2m'
+
+pass() { printf "  ${GREEN}✓${RESET} %s\n" "$*"; }
+fail() { printf "  ${RED}✗${RESET} %s\n" "$*"; }
+warn() { printf "  ${YELLOW}⚠${RESET} %s\n" "$*"; }
+info() { printf "${CYAN}→${RESET} %s\n" "$*"; }
+
+# ── Commands ────────────────────────────────────────────────────
+
+cmd_list() {
+  echo ""
+  info "Available MCP servers"
+  echo ""
+  for f in "$AVAILABLE_DIR"/*.json; do
+    [ -f "$f" ] || continue
+    python3 -c "
+import json
+with open('$f') as fh:
+    s = json.load(fh)
+active = False  # checked below if --with-status
+print(f\"  {s['name']:20s} {s['description']}\")
+"
+  done
+  echo ""
+}
+
+cmd_status() {
+  echo ""
+  info "MCP server status"
+  echo ""
+
+  # Read currently active servers from config
+  active_names=$(python3 -c "
+import json
+with open('$CONFIG_FILE') as f:
+    c = json.load(f)
+for name in c.get('mcpServers', {}):
+    print(name)
+" 2>/dev/null || echo "")
+
+  for f in "$AVAILABLE_DIR"/*.json; do
+    [ -f "$f" ] || continue
+    python3 -c "
+import json, os, sys
+
+with open('$f') as fh:
+    s = json.load(fh)
+
+name = s['name']
+desc = s['description']
+requires = s.get('requires', {})
+env_vars = requires.get('env_vars', [])
+binaries = requires.get('binaries', [])
+
+# Check if active
+active_names = '''$active_names'''.strip().split('\n') if '''$active_names'''.strip() else []
+is_active = name in active_names
+
+# Check prereqs
+env_ok = all(os.environ.get(v) for v in env_vars)
+bin_ok = all(any(
+    __import__('shutil').which(b) for b in [bin]
+) for bin in binaries)
+
+status = []
+if is_active:
+    status.append('active')
+else:
+    status.append('inactive')
+if not env_ok and env_vars:
+    missing = [v for v in env_vars if not os.environ.get(v)]
+    status.append(f'missing env: {missing}')
+if not bin_ok:
+    status.append('missing binaries')
+
+icon = '✓' if (is_active and env_ok and bin_ok) else ('!' if is_active else '·')
+print(f'  {icon} {name:20s} {desc}')
+if len(status) > 1:
+    print(f'    {\" \".join(\"[{}]\".format(s) for s in status)}')
+" 2>/dev/null
+  done
+  echo ""
+}
+
+cmd_add() {
+  local name="$1"
+  local server_file="$AVAILABLE_DIR/${name}.json"
+
+  if [ ! -f "$server_file" ]; then
+    fail "Unknown server: $name"
+    echo "  Available: $(ls -1 "$AVAILABLE_DIR" | sed 's/\.json//' | tr '\n' ' ')"
+    exit 1
+  fi
+
+  echo ""
+  info "Adding MCP server: $name"
+
+  # Check prerequisites
+  python3 -c "
+import json, os, sys
+
+with open('$server_file') as f:
+    s = json.load(f)
+
+requires = s.get('requires', {})
+env_vars = requires.get('env_vars', [])
+binaries = requires.get('binaries', [])
+
+errors = []
+for v in env_vars:
+    if not os.environ.get(v):
+        errors.append(f'  Missing env var: {v}')
+for b in binaries:
+    if not __import__('shutil').which(b):
+        errors.append(f'  Missing binary: {b}')
+
+if errors:
+    print('\\n'.join(errors))
+    print(f'\\nTo skip checks: mcp-manage add --force {s[\"name\"]}')
+    sys.exit(1)
+"
+  local check_rc=$?
+  if [ "$check_rc" -ne 0 ]; then
+    if [ "${2:-}" != "--force" ]; then
+      exit 1
+    fi
+  fi
+
+  # Merge into config
+  python3 -c "
+import json, copy
+
+with open('$CONFIG_FILE') as f:
+    config = json.load(f)
+with open('$server_file') as f:
+    server = json.load(f)
+
+# Backup
+import shutil
+shutil.copy('$CONFIG_FILE', '${CONFIG_FILE}${BACKUP_SUFFIX}')
+
+config.setdefault('mcpServers', {})
+config['mcpServers'][server['name']] = server['server']
+
+with open('$CONFIG_FILE', 'w') as f:
+    json.dump(config, f, indent=2)
+    f.write('\n')
+"
+
+  pass "Added $name to $CONFIG_FILE"
+  echo "  Backup saved: ${CONFIG_FILE}${BACKUP_SUFFIX}"
+  echo "  Run 'just install' to deploy the updated config."
+
+  # Show setup notes if any
+  python3 -c "
+import json
+with open('$server_file') as f:
+    s = json.load(f)
+notes = s.get('setup_notes', '')
+if notes:
+    print(f'\n  Setup notes: {notes}')
+" 2>/dev/null
+
+  echo ""
+}
+
+cmd_remove() {
+  local name="$1"
+
+  echo ""
+  info "Removing MCP server: $name"
+
+  python3 -c "
+import json, shutil
+
+with open('$CONFIG_FILE') as f:
+    config = json.load(f)
+
+if name := '$name' not in config.get('mcpServers', {}):
+    print('  Server not found in config: $name')
+    exit(0)
+
+shutil.copy('$CONFIG_FILE', '${CONFIG_FILE}${BACKUP_SUFFIX}')
+del config['mcpServers']['$name']
+
+with open('$CONFIG_FILE', 'w') as f:
+    json.dump(config, f, indent=2)
+    f.write('\n')
+"
+
+  pass "Removed $name from $CONFIG_FILE"
+  echo "  Backup saved: ${CONFIG_FILE}${BACKUP_SUFFIX}"
+  echo "  Run 'just install' to deploy the updated config."
+}
+
+# ── Main ────────────────────────────────────────────────────────
+
+case "${1:-}" in
+  list)
+    cmd_list
+    ;;
+  status)
+    cmd_status
+    ;;
+  add)
+    if [ -z "${2:-}" ]; then
+      echo "usage: mcp-manage add <server> [--force]"
+      exit 1
+    fi
+    cmd_add "$2" "${3:-}"
+    ;;
+  remove|rm)
+    if [ -z "${2:-}" ]; then
+      echo "usage: mcp-manage remove <server>"
+      exit 1
+    fi
+    cmd_remove "$2"
+    ;;
+  -h|--help|"")
+    echo "usage: mcp-manage <command>"
+    echo ""
+    echo "Commands:"
+    echo "  list              List all available MCP servers"
+    echo "  status            Show active/inactive status and prerequisites"
+    echo "  add <server>      Add a server (checks env vars and binaries)"
+    echo "  add --force <srv> Add a server without prerequisite checks"
+    echo "  remove <server>   Remove a server from config"
+    echo ""
+    echo "Available servers:"
+    ls -1 "$AVAILABLE_DIR" 2>/dev/null | sed 's/\.json$//' | while read -r s; do echo "  $s"; done
+    ;;
+  *)
+    fail "Unknown command: $1"
+    echo "  Try: mcp-manage --help"
+    exit 1
+    ;;
+esac

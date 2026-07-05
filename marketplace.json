@@ -1,0 +1,102 @@
+{
+  "$schema": "./marketplace.schema.json",
+  "mcp_servers": [
+    {
+      "name": "github",
+      "source": "npm:@anthropic-ai/mcp-server-github",
+      "description": "GitHub API integration for issues, PRs, and repo management",
+      "required_env": ["GITHUB_TOKEN"]
+    },
+    {
+      "name": "filesystem",
+      "source": "npm:@anthropic-ai/mcp-server-filesystem",
+      "description": "Local filesystem access and manipulation"
+    },
+    {
+      "name": "memory",
+      "source": "npm:@anthropic-ai/mcp-server-memory",
+      "description": "Persistent key-value memory store"
+    },
+    {
+      "name": "gmail",
+      "source": "npm:@anthropic-ai/mcp-server-gmail",
+      "description": "Read, search, and manage Gmail messages",
+      "required_env": ["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN"],
+      "optional": true
+    },
+    {
+      "name": "slack",
+      "source": "npm:@anthropic-ai/mcp-server-slack",
+      "description": "Read and post Slack messages, list channels and users",
+      "required_env": ["SLACK_BOT_TOKEN"],
+      "optional": true
+    },
+    {
+      "name": "brave-search",
+      "source": "npm:@anthropic-ai/mcp-server-brave-search",
+      "description": "Web search via Brave Search API",
+      "required_env": ["BRAVE_API_KEY"],
+      "optional": true
+    },
+    {
+      "name": "linear",
+      "source": "npm:@anthropic-ai/mcp-server-linear",
+      "description": "Manage Linear issues, projects, and cycles",
+      "required_env": ["LINEAR_API_KEY"],
+      "optional": true
+    },
+    {
+      "name": "jira",
+      "source": "npm:@anthropic-ai/mcp-server-jira",
+      "description": "Manage Jira issues, sprints, and boards",
+      "required_env": ["JIRA_HOST", "JIRA_EMAIL", "JIRA_API_TOKEN"],
+      "optional": true
+    },
+    {
+      "name": "notion",
+      "source": "npm:@anthropic-ai/mcp-server-notion",
+      "description": "Read, create, and update Notion pages and databases",
+      "required_env": ["NOTION_API_KEY"],
+      "optional": true
+    },
+    {
+      "name": "sqlite",
+      "source": "npm:@anthropic-ai/mcp-server-sqlite",
+      "description": "Query and manage local SQLite databases",
+      "optional": true
+    },
+    {
+      "name": "puppeteer",
+      "source": "npm:@anthropic-ai/mcp-server-puppeteer",
+      "description": "Browser automation — navigate, screenshot, interact with DOM",
+      "optional": true
+    },
+    {
+      "name": "google-maps",
+      "source": "npm:@anthropic-ai/mcp-server-google-maps",
+      "description": "Geocoding, directions, places search, and distance calculations",
+      "required_env": ["GOOGLE_MAPS_API_KEY"],
+      "optional": true
+    },
+    {
+      "name": "postgres",
+      "source": "npm:@anthropic-ai/mcp-server-postgres",
+      "description": "Query and manage PostgreSQL databases",
+      "required_env": ["PGHOST", "PGUSER", "PGPASSWORD", "PGDATABASE"],
+      "optional": true
+    }
+  ],
+  "skills": [
+    {
+      "name": "github",
+      "source": "https://github.com/anomalyco/opencode-skills/github",
+      "description": "OpenCode skill for gh CLI operations"
+    },
+    {
+      "name": "armada-orchestrator",
+      "source": "https://github.com/anomalyco/opencode-skills/armada-orchestrator",
+      "description": "Parallel task orchestration across worker nodes"
+    }
+  ],
+  "plugins": []
+}

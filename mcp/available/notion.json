@@ -1,0 +1,16 @@
+{
+  "name": "notion",
+  "description": "Read, create, and update Notion pages and databases",
+  "server": {
+    "command": "npx",
+    "args": ["-y", "@anthropic-ai/mcp-server-notion"],
+    "env": {
+      "NOTION_API_KEY": "{env:NOTION_API_KEY}"
+    }
+  },
+  "requires": {
+    "binaries": ["npx"],
+    "env_vars": ["NOTION_API_KEY"]
+  },
+  "setup_notes": "Create an integration at https://www.notion.so/my-integrations. Grant it access to specific pages/databases."
+}

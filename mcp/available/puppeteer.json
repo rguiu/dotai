@@ -1,0 +1,13 @@
+{
+  "name": "puppeteer",
+  "description": "Browser automation — navigate pages, take screenshots, interact with DOM",
+  "server": {
+    "command": "npx",
+    "args": ["-y", "@anthropic-ai/mcp-server-puppeteer"],
+    "env": {}
+  },
+  "requires": {
+    "binaries": ["npx"]
+  },
+  "setup_notes": "Requires a Chrome/Chromium installation. Useful for testing, scraping, and visual verification."
+}

@@ -1,0 +1,13 @@
+{
+  "name": "sqlite",
+  "description": "Query and manage local SQLite databases",
+  "server": {
+    "command": "npx",
+    "args": ["-y", "@anthropic-ai/mcp-server-sqlite", "--db-path", "{env:SQLITE_DB_PATH:./data.db}"],
+    "env": {}
+  },
+  "requires": {
+    "binaries": ["npx"]
+  },
+  "setup_notes": "Points to a local SQLite file. Set SQLITE_DB_PATH or defaults to ./data.db relative to working directory."
+}

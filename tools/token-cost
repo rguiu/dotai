@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# token-cost — estimate context tokens consumed by AI dotfiles.
+# Uses tiktoken (pip install tiktoken) if available for accurate counts.
+# Falls back to char-based estimate (~3.5 chars/token) otherwise.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AI_DIR="$(dirname "$SCRIPT_DIR")"
+
+RESET=$'\033[0m'
+BOLD=$'\033[1m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+CYAN=$'\033[0;36m'
+DIM=$'\033[2m'
+
+# ── Token counting ──────────────────────────────────────────────
+
+HAS_TIKTOKEN=false
+if python3 -c "import tiktoken" 2>/dev/null; then
+  HAS_TIKTOKEN=true
+  METHOD="tiktoken (cl100k_base)"
+else
+  METHOD="char estimate (~3.5/token)"
+fi
+
+count_file_tokens() {
+  local file="$1"
+  if [ ! -f "$file" ]; then echo "0"; return; fi
+  if $HAS_TIKTOKEN; then
+    python3 -c "
+import tiktoken
+enc = tiktoken.get_encoding('cl100k_base')
+with open('$file') as f:
+    print(len(enc.encode(f.read())))
+"
+  else
+    local chars
+    chars=$(wc -c < "$file" | tr -d ' ')
+    python3 -c "print(max(1, int($chars / 3.5 + 0.5)))"
+  fi
+}
+
+count_dir_tokens() {
+  local dir="$1" pattern="${2:-*.md}" total=0
+  if [ -d "$dir" ]; then
+    while IFS= read -r -d '' f; do
+      total=$((total + $(count_file_tokens "$f")))
+    done < <(find "$dir" -maxdepth 1 -name "$pattern" -type f -print0 2>/dev/null || true)
+  fi
+  echo "$total"
+}
+
+count_skill_tokens() {
+  local skill="$1"
+  if [ -d "$skill" ] && [ -f "$skill/SKILL.md" ]; then
+    count_file_tokens "$skill/SKILL.md"
+  else
+    echo "0"
+  fi
+}
+
+# ── Formatting ───────────────────────────────────────────────────
+
+bar() {
+  local tokens="$1" max="$2" filled=0
+  if [ "$max" -gt 0 ]; then filled=$((tokens * 20 / max)); fi
+  local bar_str=""
+  for ((i=0; i<filled; i++)); do bar_str+="█"; done
+  for ((i=filled; i<20; i++)); do bar_str+="░"; done
+  echo "$bar_str"
+}
+
+# ── Main ────────────────────────────────────────────────────────
+
+echo ""
+echo "  ${BOLD}Context Token Cost Estimate${RESET}"
+echo "  ${DIM}Method: ${METHOD}${RESET}"
+echo ""
+
+TOTAL=0
+
+# ── CLAUDE.md ───────────────────────────────────────────────────
+
+CLAUDE_TOKENS=$(count_file_tokens "$AI_DIR/claude/CLAUDE.md")
+TOTAL=$((TOTAL + CLAUDE_TOKENS))
+printf "  ${CYAN}%-20s${RESET} %5s tokens\n" "CLAUDE.md" "$CLAUDE_TOKENS"
+
+# ── Language rules ──────────────────────────────────────────────
+
+RULES_TOKENS=$(count_dir_tokens "$AI_DIR/rules" "*.md")
+TOTAL=$((TOTAL + RULES_TOKENS))
+echo ""
+echo "  ${CYAN}Language rules${RESET}"
+for rule in "$AI_DIR"/rules/*.md; do
+  [ -f "$rule" ] || continue
+  name=$(basename "$rule" .md)
+  t=$(count_file_tokens "$rule")
+  printf "    rules/%-16s %5s tokens\n" "${name}.md" "$t"
+done
+printf "    ${DIM}%-20s %5s subtotal${RESET}\n" "" "$RULES_TOKENS"
+
+# ── Skills (on-demand) ──────────────────────────────────────────
+
+echo ""
+echo "  ${CYAN}Skills (on-demand)${RESET}"
+SKILLS_TOKENS=0
+for scope_dir in "$AI_DIR"/skills/*/; do
+  [ -d "$scope_dir" ] || continue
+  scope=$(basename "$scope_dir")
+  for skill_dir in "$scope_dir"/*/; do
+    [ -d "$skill_dir" ] || continue
+    name=$(basename "$skill_dir")
+    t=$(count_skill_tokens "$skill_dir")
+    SKILLS_TOKENS=$((SKILLS_TOKENS + t))
+    printf "    /%s:%-18s %5s tokens\n" "$scope" "$name" "$t"
+  done
+done
+
+# ── Agents (on-demand) ──────────────────────────────────────────
+
+echo ""
+echo "  ${CYAN}Agents (on-demand)${RESET}"
+AGENTS_TOKENS=0
+for agent_file in "$AI_DIR"/opencode/agents/*.md; do
+  [ -f "$agent_file" ] || continue
+  name=$(basename "$agent_file" .md)
+  t=$(count_file_tokens "$agent_file")
+  AGENTS_TOKENS=$((AGENTS_TOKENS + t))
+  printf "    agent:%-18s %5s tokens\n" "$name" "$t"
+done
+
+# ── Configs ─────────────────────────────────────────────────────
+
+echo ""
+echo "  ${CYAN}Configs${RESET}"
+MCP_TOKENS=$(count_file_tokens "$AI_DIR/mcp/claude_desktop_config.json")
+OPCONFIG_TOKENS=$(count_file_tokens "$AI_DIR/opencode/config.json")
+TOTAL=$((TOTAL + MCP_TOKENS + OPCONFIG_TOKENS))
+printf "    mcp config            %5s tokens\n" "$MCP_TOKENS"
+printf "    opencode config       %5s tokens\n" "$OPCONFIG_TOKENS"
+
+# ── Summary ─────────────────────────────────────────────────────
+
+echo ""
+echo "  ${BOLD}Summary${RESET}"
+echo "  ${DIM}──────────────────────────────────────────${RESET}"
+
+MAX=$((CLAUDE_TOKENS > RULES_TOKENS ? CLAUDE_TOKENS : RULES_TOKENS))
+MAX=$((MAX > SKILLS_TOKENS ? MAX : SKILLS_TOKENS))
+MAX=$((MAX > 0 ? MAX : 1))
+
+printf "  %-18s ${GREEN}%5s${RESET}t  %s  ${DIM}always on${RESET}\n" \
+  "CLAUDE.md" "$CLAUDE_TOKENS" "$(bar "$CLAUDE_TOKENS" "$MAX")"
+printf "  %-18s ${GREEN}%5s${RESET}t  %s  ${DIM}always on${RESET}\n" \
+  "Language rules" "$RULES_TOKENS" "$(bar "$RULES_TOKENS" "$MAX")"
+printf "  %-18s ${GREEN}%5s${RESET}t  %s  ${DIM}always on${RESET}\n" \
+  "Configs" "$((MCP_TOKENS + OPCONFIG_TOKENS))" "$(bar "$((MCP_TOKENS + OPCONFIG_TOKENS))" "$MAX")"
+
+echo "  ${DIM}──────────────────────────────────────────${RESET}"
+printf "  ${BOLD}%-18s %5s tokens${RESET}\n" "Base cost" "$TOTAL"
+
+SONNET_COST=$(python3 -c "print(f'{(($TOTAL)/1000)*0.003:.4f}')")
+OPUS_COST=$(python3 -c "print(f'{(($TOTAL)/1000)*0.015:.4f}')")
+
+echo ""
+printf "  %-18s ${GREEN}%5s${RESET}t  ${DIM}on-demand${RESET}\n" \
+  "Skills (all)" "$SKILLS_TOKENS"
+printf "  %-18s ${GREEN}%5s${RESET}t  ${DIM}on-demand${RESET}\n" \
+  "Agents (all)" "$AGENTS_TOKENS"
+
+echo ""
+echo "  ${DIM}Cost per session (base rules only):${RESET}"
+echo "  ${DIM}  Sonnet: \$${SONNET_COST}    Opus: \$${OPUS_COST}${RESET}"
+
+if ! $HAS_TIKTOKEN; then
+  echo ""
+  echo "  ${YELLOW}⚠  Install tiktoken for accurate counts: pip install tiktoken${RESET}"
+fi
+echo ""

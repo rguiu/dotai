@@ -1,0 +1,16 @@
+{
+  "name": "brave-search",
+  "description": "Web search via Brave Search API",
+  "server": {
+    "command": "npx",
+    "args": ["-y", "@anthropic-ai/mcp-server-brave-search"],
+    "env": {
+      "BRAVE_API_KEY": "{env:BRAVE_API_KEY}"
+    }
+  },
+  "requires": {
+    "binaries": ["npx"],
+    "env_vars": ["BRAVE_API_KEY"]
+  },
+  "setup_notes": "Get a free API key at https://brave.com/search/api/. Free tier: 2,000 queries/month."
+}

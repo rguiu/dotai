@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+"""strip-comments — remove comments from source code to reduce token count.
+
+Supports: Python, JavaScript/TypeScript, Go, Rust, Shell.
+
+Usage:
+  cat file.py | strip-comments [--lang python]
+  strip-comments file.py              # infers lang from extension
+  strip-comments file1.py file2.go    # processes multiple files
+
+Output goes to stdout.
+"""
+
+import re
+import sys
+from pathlib import Path
+
+EXT_MAP = {
+    ".py": "python",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".ts": "javascript",
+    ".tsx": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".go": "go",
+    ".rs": "rust",
+    ".sh": "shell",
+    ".bash": "shell",
+    ".zsh": "shell",
+}
+
+
+def strip_python(text: str) -> str:
+    """Remove line comments and block comments (docstrings treated as comments)."""
+    lines = text.split("\n")
+    result = []
+    in_triple = False
+    for line in lines:
+        stripped = line.lstrip()
+        if in_triple:
+            if '"""' in stripped or "'''" in stripped:
+                in_triple = False
+            continue
+        if stripped.startswith('"""') or stripped.startswith("'''"):
+            if stripped.count('"""') >= 2 or stripped.count("'''") >= 2:
+                continue
+            in_triple = True
+            continue
+        comment_pos = line.find(" #")
+        if comment_pos >= 0:
+            line = line[:comment_pos]
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            result.append(line)
+    return "\n".join(result)
+
+
+def strip_javascript(text: str) -> str:
+    """Remove // and /* */ comments from JS/TS."""
+    # Remove block comments first
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    # Remove line comments (but not URLs)
+    lines = text.split("\n")
+    result = []
+    for line in lines:
+        # Don't strip "//" that appears in a string or URL
+        comment_pos = line.find("//")
+        if comment_pos >= 0:
+            before = line[:comment_pos].strip()
+            # Heuristic: if "//" is preceded by ":", it might be a URL
+            if before and before[-1] == ":":
+                result.append(line)
+                continue
+            line = line[:comment_pos]
+        stripped = line.strip()
+        if stripped:
+            result.append(line)
+    return "\n".join(result)
+
+
+def strip_go(text: str) -> str:
+    """Remove // and /* */ comments from Go."""
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    lines = text.split("\n")
+    result = []
+    for line in lines:
+        comment_pos = line.find("//")
+        if comment_pos >= 0:
+            before = line[:comment_pos].strip()
+            if before and before[-1] == ":":
+                result.append(line)
+                continue
+            line = line[:comment_pos]
+        stripped = line.strip()
+        if stripped:
+            result.append(line)
+    return "\n".join(result)
+
+
+def strip_rust(text: str) -> str:
+    """Remove //, ///, //!, and /* */ comments from Rust."""
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    lines = text.split("\n")
+    result = []
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("//"):
+            continue
+        result.append(line)
+    return "\n".join(result)
+
+
+def strip_shell(text: str) -> str:
+    """Remove # comments from shell scripts."""
+    lines = text.split("\n")
+    result = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("#!/"):
+            continue
+        # Remove inline comments (but careful with # in strings)
+        comment_pos = line.find(" #")
+        if comment_pos >= 0:
+            line = line[:comment_pos]
+        stripped = line.strip()
+        if stripped:
+            result.append(line)
+    return "\n".join(result)
+
+
+STRIPPERS = {
+    "python": strip_python,
+    "javascript": strip_javascript,
+    "go": strip_go,
+    "rust": strip_rust,
+    "shell": strip_shell,
+}
+
+
+def infer_lang(path: str) -> str | None:
+    ext = Path(path).suffix.lower()
+    return EXT_MAP.get(ext)
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    lang = None
+    files = []
+
+    for arg in args:
+        if arg.startswith("--lang="):
+            lang = arg.split("=", 1)[1]
+        elif arg.startswith("--"):
+            print(f"Unknown flag: {arg}", file=sys.stderr)
+            sys.exit(1)
+        elif arg == "-":
+            files.append("-")
+        else:
+            files.append(arg)
+
+    if not files and sys.stdin.isatty():
+        print("usage: strip-comments [--lang=py|js|go|rs|sh] [file...]", file=sys.stderr)
+        print("       Reads from stdin if no file given.", file=sys.stderr)
+        sys.exit(1)
+
+    if not files:
+        raw = sys.stdin.read()
+        resolved_lang = lang or "javascript"
+        if resolved_lang not in STRIPPERS:
+            print(f"Unknown language: {resolved_lang}", file=sys.stderr)
+            sys.exit(1)
+        print(STRIPPERS[resolved_lang](raw))
+        return
+
+    for file in files:
+        if file == "-":
+            raw = sys.stdin.read()
+        else:
+            with open(file) as f:
+                raw = f.read()
+
+        resolved_lang = lang or infer_lang(file) or "javascript"
+        if resolved_lang not in STRIPPERS:
+            print(f"Unknown language for {file}: {resolved_lang}", file=sys.stderr)
+            continue
+
+        output = STRIPPERS[resolved_lang](raw)
+        # Remove trailing blank lines but keep structure
+        output = output.strip()
+        if output:
+            if len(files) > 1:
+                print(f"// --- {file} ---")
+            print(output)
+
+
+if __name__ == "__main__":
+    main()

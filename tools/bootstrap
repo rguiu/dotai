@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# bootstrap — configure where and how to install the harness.
+# Saves settings to ~/.dotai/config.json. Does NOT modify any project files.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AI_DIR="$(dirname "$SCRIPT_DIR")"
+DOTAI_DIR="$HOME/.dotai"
+DOTAI_CONF="$DOTAI_DIR/config.json"
+
+RESET=$'\033[0m' BOLD=$'\033[1m' CYAN=$'\033[0;36m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' DIM=$'\033[2m'
+
+# ── Welcome ─────────────────────────────────────────────────────
+
+clear 2>/dev/null || true
+echo ""
+echo "  ${BOLD}DotAI — Setup${RESET}"
+echo "  ${DIM}Configure what to enable.${RESET}"
+echo ""
+
+# ── Step 1: AI tools ────────────────────────────────────────────
+
+echo ""
+echo "  ${BOLD}Which AI tools?${RESET}"
+echo "    ${GREEN}1${RESET}  Claude Code"
+echo "    ${GREEN}2${RESET}  OpenCode"
+echo "    ${GREEN}3${RESET}  Both"
+echo ""
+read -r -p "  Choice [2]: " TOOLS
+TOOLS="${TOOLS:-2}"
+case "$TOOLS" in 1) TOOL_LIST="claude";; 2) TOOL_LIST="opencode";; *) TOOL_LIST="claude,opencode";; esac
+
+# ── Step 3: Profile ─────────────────────────────────────────────
+
+echo ""
+echo "  ${BOLD}Workflow style${RESET}"
+echo "    ${GREEN}1${RESET}  Rigorous — full gates, GRILL ME, 7 skills, 4 langs"
+echo "    ${GREEN}2${RESET}  Pragmatic — balanced, 3 skills, 2 langs"
+echo "    ${GREEN}3${RESET}  Minimal — essentials only"
+echo ""
+read -r -p "  Choice [1]: " PROFILE_CHOICE
+case "${PROFILE_CHOICE:-1}" in 2) PROFILE="pragmatic";; 3) PROFILE="minimal";; *) PROFILE="rigorous";; esac
+
+# ── Step 4: Languages ───────────────────────────────────────────
+
+if [ "$PROFILE" != "minimal" ]; then
+  echo ""
+  echo "  ${BOLD}Languages${RESET}"
+  echo "  ${DIM}Enter space-separated list, or press Enter for all: python typescript rust go${RESET}"
+  read -r -p "  > " LANGS
+  LANGS="${LANGS:-python typescript rust go}"
+else
+  LANGS=""
+fi
+
+# ── Step 5: Optional MCPs ───────────────────────────────────────
+
+echo ""
+echo "  ${BOLD}Optional MCP servers${RESET}"
+echo "  ${DIM}Enter space-separated names, or press Enter for none:${RESET}"
+echo "  ${DIM}gmail slack brave-search linear jira notion sqlite puppeteer google-maps postgres${RESET}"
+echo ""
+read -r -p "  > " MCPS
+
+# ── Save ────────────────────────────────────────────────────────
+
+mkdir -p "$DOTAI_DIR"
+
+python3 -c "
+import json, os
+conf = {
+    'version': 1,
+    'profile': '$PROFILE',
+    'tools': '$TOOL_LIST'.split(','),
+    'languages': '$LANGS'.split(),
+    'optional_mcps': '$MCPS'.split(),
+    'installed_at': '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+}
+os.makedirs('$DOTAI_DIR', exist_ok=True)
+with open('$DOTAI_CONF', 'w') as f:
+    json.dump(conf, f, indent=2)
+"
+
+# ── Done ────────────────────────────────────────────────────────
+
+echo ""
+echo "  ${BOLD}Saved to ~/.dotai/config.json${RESET}"
+echo ""
+echo "  Profile:     ${GREEN}$PROFILE${RESET}"
+echo "  Tools:       ${GREEN}$TOOL_LIST${RESET}"
+echo "  Languages:   ${GREEN}${LANGS:-none}${RESET}"
+echo ""
+echo "  Next:"
+echo "    ${DIM}just install${RESET}   — deploy to ~/.config/opencode/"
+echo ""

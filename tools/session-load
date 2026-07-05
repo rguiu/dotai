@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# session-load — print a prompt to resume a saved session.
+# Usage: session-load <session-name> | pbcopy   (macOS)
+#        session-load <session-name>            (stdout)
+set -euo pipefail
+
+SESSIONS_DIR="${SESSIONS_DIR:-$HOME/.claude/sessions}"
+NAME="${1:-}"
+if [ -z "$NAME" ]; then
+  echo "usage: session-load <session-name>"
+  echo ""
+  echo "Saved sessions:"
+  ls -1 "$SESSIONS_DIR" 2>/dev/null || echo "  (none)"
+  exit 1
+fi
+
+SESSION_FILE="$SESSIONS_DIR/${NAME}.json"
+if [ ! -f "$SESSION_FILE" ]; then
+  echo "Session not found: $SESSION_FILE"
+  echo "Available:"
+  ls -1 "$SESSIONS_DIR" 2>/dev/null || echo "  (none)"
+  exit 1
+fi
+
+python3 -c "
+import json
+
+with open('$SESSION_FILE') as f:
+    s = json.load(f)
+
+branch = s['git']['branch']
+root = s['git']['root']
+status = s['git']['status'].strip()
+diff_stat = s['git']['diff_stat']
+log = s['git']['recent_commits']
+tmux = s['tmux_scrollback']
+ts = s['timestamp']
+pwd = s['working_directory']
+name = s['session_name']
+
+print(f'''Resume session: {name}
+Saved: {ts}
+Project: {root} ({branch})
+Directory: {pwd}
+
+Git status:
+{status if status else '(clean)'}
+
+Uncommitted changes: {diff_stat if diff_stat.strip() else '(none)'}
+
+Recent commits:
+{log}
+
+Terminal context:
+{tmux if tmux.strip() and tmux.strip() != '—' else '(no tmux)'}
+
+Pick up where I left off. The current branch is {branch}.'''[1:])
+"

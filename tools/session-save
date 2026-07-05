@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# session-save — capture current session state to a JSON file.
+# Usage: session-save [--dir ~/.claude/sessions] [--name my-session]
+set -euo pipefail
+
+SESSIONS_DIR="${SESSIONS_DIR:-$HOME/.claude/sessions}"
+NAME="${1:-session-$(date +%Y%m%d-%H%M%S)}"
+SESSION_FILE="$SESSIONS_DIR/${NAME}.json"
+
+mkdir -p "$SESSIONS_DIR"
+
+# ── Capture state ────────────────────────────────────────────────
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "—")
+GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "—")
+STATUS=$(git status --short 2>/dev/null | head -20 || echo "—")
+LOG=$(git log --oneline -5 2>/dev/null || echo "—")
+DIFF_STAT=$(git diff --stat 2>/dev/null | tail -1 || echo "—")
+TMUX_SCROLLBACK=$(tmux capture-pane -p -S -50 2>/dev/null || echo "—")
+
+# ── Write JSON ───────────────────────────────────────────────────
+
+python3 -c "
+import json, os
+
+data = {
+    'timestamp': '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+    'session_name': '$NAME',
+    'working_directory': os.getcwd(),
+    'git': {
+        'branch': '''$BRANCH''',
+        'root': '''$GIT_ROOT''',
+        'status': '''$STATUS''',
+        'diff_stat': '''$DIFF_STAT''',
+        'recent_commits': '''$LOG''',
+    },
+    'tmux_scrollback': '''$TMUX_SCROLLBACK''',
+    'environment': {
+        'shell': os.environ.get('SHELL', '—'),
+        'python_venv': os.environ.get('VIRTUAL_ENV', '—'),
+    },
+}
+
+with open('$SESSION_FILE', 'w') as f:
+    json.dump(data, f, indent=2)
+
+print(f'Saved: $SESSION_FILE')
+" 2>/dev/null || echo "Saved: $SESSION_FILE"
+
+echo "Restore with: session-load $NAME"

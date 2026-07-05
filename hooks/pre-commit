@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# pre-commit hook — scan staged files for secrets and invalid configs.
+# Install: ln -s ai/hooks/pre-commit .git/hooks/pre-commit
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+RESET='\033[0m'
+
+fail() { printf "${RED}✗${RESET} %s\n" "$*"; }
+pass() { printf "${GREEN}✓${RESET} %s\n" "$*"; }
+
+ERRORS=0
+
+# ── Secret patterns to detect ───────────────────────────────────
+SECRET_PATTERNS=(
+  'sk-ant-[a-zA-Z0-9_-]+'                    # Anthropic API key
+  'sk-[a-zA-Z0-9]{32,}'                      # OpenAI / generic API key
+  'ghp_[a-zA-Z0-9]{36,}'                     # GitHub personal access token (classic)
+  'gho_[a-zA-Z0-9]{36,}'                     # GitHub OAuth token
+  'ghu_[a-zA-Z0-9]{36,}'                     # GitHub user token
+  'ghs_[a-zA-Z0-9]{36,}'                     # GitHub server token
+  'ghr_[a-zA-Z0-9]{36,}'                     # GitHub refresh token
+  'github_pat_[a-zA-Z0-9_]{36,}'             # GitHub fine-grained token
+  'AIza[0-9A-Za-z_-]{35}'                    # Google API key
+  'AKIA[0-9A-Z]{16}'                         # AWS access key
+  'amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' # AWS MWS
+  'eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}' # JWT token
+)
+
+echo ""
+echo "  Pre-commit: scanning for secrets and config issues..."
+
+# ── Check staged files ──────────────────────────────────────────
+
+for pattern in "${SECRET_PATTERNS[@]}"; do
+  # Only scan staged additions (not deletions)
+  matches=$(git diff --cached --diff-filter=A -G"$pattern" --name-only 2>/dev/null || true)
+  if [ -n "$matches" ]; then
+    while IFS= read -r file; do
+      # Skip .env.example files (they have placeholders)
+      if [[ "$file" == *.env.example ]]; then
+        continue
+      fi
+      fail "Possible secret in $file (matches pattern: $pattern)"
+      ERRORS=$((ERRORS + 1))
+    done <<< "$matches"
+  fi
+done
+
+# ── Validate JSON configs ───────────────────────────────────────
+
+if git diff --cached --name-only 2>/dev/null | grep -qE '\.jsonc?$'; then
+  while IFS= read -r file; do
+    if python3 -c "import json; json.load(open('$file'))" 2>/dev/null; then
+      pass "Valid JSON: $file"
+    else
+      fail "Invalid JSON: $file"
+      ERRORS=$((ERRORS + 1))
+    fi
+  done < <(git diff --cached --name-only --diff-filter=A 2>/dev/null | grep -E '\.jsonc?$')
+fi
+
+# ── Result ──────────────────────────────────────────────────────
+
+echo ""
+if [ "$ERRORS" -eq 0 ]; then
+  pass "Pre-commit checks passed."
+else
+  fail "$ERRORS issue(s) found. Commit blocked."
+  echo "  If these are false positives, use: git commit --no-verify"
+fi
+echo ""
+exit "$ERRORS"

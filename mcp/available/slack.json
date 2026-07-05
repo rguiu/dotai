@@ -1,0 +1,17 @@
+{
+  "name": "slack",
+  "description": "Read and post Slack messages, list channels and users",
+  "server": {
+    "command": "npx",
+    "args": ["-y", "@anthropic-ai/mcp-server-slack"],
+    "env": {
+      "SLACK_BOT_TOKEN": "{env:SLACK_BOT_TOKEN}",
+      "SLACK_TEAM_ID": "{env:SLACK_TEAM_ID}"
+    }
+  },
+  "requires": {
+    "binaries": ["npx"],
+    "env_vars": ["SLACK_BOT_TOKEN"]
+  },
+  "setup_notes": "Create a Slack app with bot token scopes: channels:history, channels:read, chat:write, users:read."
+}

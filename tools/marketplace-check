@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# marketplace-check — report outdated MCP servers, skills, and plugins.
+# Read-only: never installs, updates, or modifies anything.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AI_DIR="$(dirname "$SCRIPT_DIR")"
+MARKETPLACE="$AI_DIR/marketplace.json"
+
+RED=$'\033[0;31m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+CYAN=$'\033[0;36m'
+RESET=$'\033[0m'
+DIM=$'\033[2m'
+
+warn() { printf "  ${YELLOW}⚠${RESET} %s\n" "$*"; }
+ok()   { printf "  ${GREEN}✓${RESET} %s\n" "$*"; }
+info() { printf "${CYAN}→${RESET} %s\n" "$*"; }
+
+# ── Helpers ─────────────────────────────────────────────────────
+
+check_npm_version() {
+  local pkg="$1"
+  local current latest
+  current="$(npm list -g "$pkg" --depth=0 2>/dev/null | grep "$pkg" | awk -F@ '{print $NF}')" || true
+  if [ -z "$current" ]; then
+    warn "$pkg (npm) — not installed globally"
+    return
+  fi
+  latest="$(npm view "$pkg" version 2>/dev/null)" || true
+  if [ -z "$latest" ]; then
+    warn "$pkg (npm) — cannot check latest version"
+    return
+  fi
+  if [ "$current" = "$latest" ]; then
+    ok "$pkg@$current (latest)"
+  else
+    warn "$pkg@$current → latest is $latest"
+  fi
+}
+
+check_pip_version() {
+  local pkg="$1"
+  local current latest
+  current="$(pip show "$pkg" 2>/dev/null | grep '^Version:' | awk '{print $2}')" || true
+  if [ -z "$current" ]; then
+    warn "$pkg (pip) — not installed"
+    return
+  fi
+  latest="$(pip index versions "$pkg" 2>/dev/null | head -1 | awk '{print $NF}' | tr -d '()')" || true
+  if [ -z "$latest" ]; then
+    warn "$pkg (pip) — cannot check latest version"
+    return
+  fi
+  if [ "$current" = "$latest" ]; then
+    ok "$pkg@$current (latest)"
+  else
+    warn "$pkg@$current → latest is $latest"
+  fi
+}
+
+check_git_skill() {
+  local name="$1"
+  local source="$2"
+  local skill_dir
+  skill_dir="$AI_DIR/skills/$name"
+
+  if [ -d "$skill_dir" ]; then
+    ok "$name (skill) — present"
+  else
+    warn "$name (skill) — not found in skills/"
+  fi
+}
+
+# ── Main ────────────────────────────────────────────────────────
+
+if [ ! -f "$MARKETPLACE" ]; then
+  echo "marketplace.json not found at $MARKETPLACE"
+  exit 1
+fi
+
+echo ""
+info "Checking marketplace dependencies (read-only — no changes made)"
+echo ""
+
+# ── MCP servers ─────────────────────────────────────────────────
+echo "  MCP servers"
+echo "  ${DIM}──────────────────────────────────────────${RESET}"
+
+python3 -c "
+import json, sys
+with open('$MARKETPLACE') as f:
+    data = json.load(f)
+for srv in data.get('mcp_servers', []):
+    print('{name}\t{source}'.format(**srv))
+" | while IFS=$'\t' read -r name source; do
+  if echo "$source" | grep -q '^npm:'; then
+    pkg="${source#npm:}"
+    check_npm_version "$pkg"
+  else
+    warn "$name — unknown source type: $source"
+  fi
+done
+
+# ── Skills ──────────────────────────────────────────────────────
+echo ""
+echo "  Skills"
+echo "  ${DIM}──────────────────────────────────────────${RESET}"
+
+python3 -c "
+import json
+with open('$MARKETPLACE') as f:
+    data = json.load(f)
+for skill in data.get('skills', []):
+    print('{name}\t{source}'.format(**skill))
+" 2>/dev/null | while IFS=$'\t' read -r name source; do
+  check_git_skill "$name" "$source"
+done
+
+# ── Plugins ─────────────────────────────────────────────────────
+echo ""
+echo "  Plugins"
+echo "  ${DIM}──────────────────────────────────────────${RESET}"
+
+python3 -c "
+import json
+with open('$MARKETPLACE') as f:
+    data = json.load(f)
+for plugin in data.get('plugins', []):
+    print(plugin)
+" 2>/dev/null | while read -r plugin; do
+  warn "$plugin — no version check implemented yet"
+done
+
+echo ""
+ok "Check complete. No changes were made."
+echo ""
